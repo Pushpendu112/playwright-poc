@@ -1,0 +1,14 @@
+{
+  "cookies": [
+    {
+      "name": "XSRF-TOKEN",
+      "value": "YOUR_TOKEN_HERE",
+      "domain": ".your-domain.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    }
+  ]
+}
