@@ -1,270 +1,492 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Test Recorder</title>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>body { margin: 0; }</style>
-</head>
-<body>
-  <div id="root"></div>
-  
-  <script type="text/babel">
-    const { useState, useEffect } = React;
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test Recorder</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
 
-    const storage = {
-      get: (key) => {
-        const data = localStorage.getItem(key);
-        return data ? { value: data } : null;
-      },
-      set: (key, value) => localStorage.setItem(key, value),
-      delete: (key) => localStorage.removeItem(key),
-      list: (prefix) => ({
-        keys: Object.keys(localStorage).filter(k => k.startsWith(prefix))
-      })
-    };
+    <script type="text/babel">
+      const { useState, useEffect } = React;
 
-    function App() {
-      const [tests, setTests] = useState([]);
-      const [isRecording, setIsRecording] = useState(false);
-      const [recordingState, setRecordingState] = useState(null);
-      const [newTest, setNewTest] = useState({ name: '', url: '' });
-      const [executionResults, setExecutionResults] = useState(null);
-      const [selectedTest, setSelectedTest] = useState(null);
-
-      useEffect(() => { loadTests(); }, []);
-
-      const loadTests = () => {
-        const keys = storage.list('test:');
-        const loadedTests = keys.keys.map(key => {
-          const result = storage.get(key);
-          return result ? JSON.parse(result.value) : null;
-        }).filter(Boolean);
-        setTests(loadedTests.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      const storage = {
+        get: (key) => {
+          const data = localStorage.getItem(key);
+          return data ? { value: data } : null;
+        },
+        set: (key, value) => localStorage.setItem(key, value),
+        delete: (key) => localStorage.removeItem(key),
+        list: (prefix) => ({
+          keys: Object.keys(localStorage).filter((k) => k.startsWith(prefix)),
+        }),
       };
 
-      const startRecording = async () => {
-        if (!newTest.name || !newTest.url) {
-          alert('Please enter test name and URL');
-          return;
-        }
+      function App() {
+        const [tests, setTests] = useState([]);
+        const [isRecording, setIsRecording] = useState(false);
+        const [recordingState, setRecordingState] = useState(null);
+        const [newTest, setNewTest] = useState({ name: "", url: "" });
+        const [executionResults, setExecutionResults] = useState(null);
+        const [selectedTest, setSelectedTest] = useState(null);
+        const [codegenModalOpen, setCodegenModalOpen] = useState(false);
+        const [generatedCode, setGeneratedCode] = useState("");
+        const [codegenSessionId, setCodegenSessionId] = useState(null);
 
-        try {
-          const response = await fetch('/api/record/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: newTest.url })
-          });
-
-          if (!response.ok) throw new Error('Failed to start recording');
-          const data = await response.json();
-          
-          setIsRecording(true);
-          setRecordingState({
-            sessionId: data.sessionId,
-            name: newTest.name,
-            url: newTest.url
-          });
-        } catch (error) {
-          alert('Error: ' + error.message);
-        }
-      };
-
-      const stopRecording = async () => {
-        if (!recordingState) return;
-
-        try {
-          const response = await fetch('/api/record/stop', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId: recordingState.sessionId })
-          });
-
-          if (!response.ok) throw new Error('Failed to stop recording');
-          const data = await response.json();
-          
-          const test = {
-            id: `test:${Date.now()}`,
-            name: recordingState.name,
-            url: recordingState.url,
-            steps: data.steps,
-            createdAt: new Date().toISOString(),
-            status: 'Not Run'
-          };
-
-          storage.set(test.id, JSON.stringify(test));
+        useEffect(() => {
           loadTests();
+        }, []);
+
+        // Poll for codegen status
+        useEffect(() => {
+          if (!codegenSessionId) return;
+
+          const interval = setInterval(async () => {
+            try {
+              const response = await fetch(
+                `/api/codegen/status/${codegenSessionId}`
+              );
+              if (response.ok) {
+                const data = await response.json();
+                if (data.generatedCode) {
+                  setGeneratedCode(data.generatedCode);
+                }
+              }
+            } catch (error) {
+              console.error("Error checking codegen status:", error);
+            }
+          }, 2000);
+
+          return () => clearInterval(interval);
+        }, [codegenSessionId]);
+
+        const loadTests = () => {
+          const keys = storage.list("test:");
+          const loadedTests = keys.keys
+            .map((key) => {
+              const result = storage.get(key);
+              return result ? JSON.parse(result.value) : null;
+            })
+            .filter(Boolean);
+          setTests(
+            loadedTests.sort(
+              (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+            )
+          );
+        };
+
+        const startRecording = async () => {
+          if (!newTest.name || !newTest.url) {
+            alert("Please enter test name and URL");
+            return;
+          }
+
+          try {
+            const response = await fetch("/api/codegen/start", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: newTest.url,
+                testName: newTest.name,
+              }),
+            });
+
+            if (!response.ok) throw new Error("Failed to start codegen");
+            const data = await response.json();
+
+            setIsRecording(true);
+            setCodegenSessionId(data.sessionId);
+            setGeneratedCode("");
+            setCodegenModalOpen(true);
+
+            setRecordingState({
+              sessionId: data.sessionId,
+              name: newTest.name,
+              url: newTest.url,
+              isCodegen: true,
+            });
+          } catch (error) {
+            alert("Error: " + error.message);
+          }
+        };
+
+        const saveCodegenTest = async () => {
+          if (!codegenSessionId) return;
+
+          try {
+            const response = await fetch("/api/codegen/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId: codegenSessionId,
+                testName: newTest.name,
+              }),
+            });
+
+            if (!response.ok) throw new Error("Failed to save codegen test");
+            const data = await response.json();
+
+            storage.set(data.test.id, JSON.stringify(data.test));
+            loadTests();
+
+            setIsRecording(false);
+            setCodegenSessionId(null);
+            setCodegenModalOpen(false);
+            setRecordingState(null);
+            setNewTest({ name: "", url: "" });
+            setGeneratedCode("");
+
+            alert(`Test saved! Generated Playwright test code`);
+          } catch (error) {
+            alert("Error: " + error.message);
+          }
+        };
+
+        const cancelCodegen = async () => {
+          if (codegenSessionId) {
+            try {
+              await fetch("/api/codegen/stop", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId: codegenSessionId }),
+              });
+            } catch (error) {
+              console.error("Error canceling codegen:", error);
+            }
+          }
 
           setIsRecording(false);
+          setCodegenSessionId(null);
+          setCodegenModalOpen(false);
           setRecordingState(null);
-          setNewTest({ name: '', url: '' });
-          alert(`Test saved! ${data.steps.length} steps recorded`);
-        } catch (error) {
-          alert('Error: ' + error.message);
-          setIsRecording(false);
-        }
-      };
+          setNewTest({ name: "", url: "" });
+          setGeneratedCode("");
+        };
 
-      const runTest = async (test) => {
-        setSelectedTest(test);
-        setExecutionResults({ status: 'running' });
+        const runTest = async (test) => {
+          setSelectedTest(test);
+          setExecutionResults({ status: "running" });
 
-        try {
-          const response = await fetch('/api/test/run', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: test.url, steps: test.steps })
-          });
+          try {
+            // For codegen tests, execute the generated Playwright test using the server runner
+            if (test.type === "codegen") {
+              setExecutionResults({ status: "running" });
+              try {
+                const response = await fetch("/api/test/run-codegen", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ code: test.code, url: test.url }),
+                });
 
-          if (!response.ok) throw new Error('Failed to run test');
-          const results = await response.json();
-          
-          setExecutionResults(results);
+                if (!response.ok) throw new Error("Failed to run codegen test");
+                const results = await response.json();
 
-          const updatedTest = { ...test, status: results.status };
-          storage.set(test.id, JSON.stringify(updatedTest));
+                setExecutionResults(results);
+
+                const updatedTest = { ...test, status: results.status };
+                storage.set(test.id, JSON.stringify(updatedTest));
+                loadTests();
+              } catch (err) {
+                setExecutionResults({ status: "failed", error: err.message });
+              }
+              return;
+            }
+
+            // For legacy step-based tests
+            const response = await fetch("/api/test/run", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: test.url, steps: test.steps }),
+            });
+
+            if (!response.ok) throw new Error("Failed to run test");
+            const results = await response.json();
+
+            setExecutionResults(results);
+
+            const updatedTest = { ...test, status: results.status };
+            storage.set(test.id, JSON.stringify(updatedTest));
+            loadTests();
+          } catch (error) {
+            setExecutionResults({ status: "failed", error: error.message });
+          }
+        };
+
+        const deleteTest = (testId) => {
+          if (!confirm("Delete this test?")) return;
+          storage.delete(testId);
           loadTests();
-        } catch (error) {
-          setExecutionResults({ status: 'failed', error: error.message });
-        }
-      };
+        };
 
-      const deleteTest = (testId) => {
-        if (!confirm('Delete this test?')) return;
-        storage.delete(testId);
-        loadTests();
-      };
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+            <div className="max-w-7xl mx-auto">
+              <h1 className="text-4xl font-bold text-slate-900 mb-2">
+                Test Recorder
+              </h1>
+              <p className="text-slate-600 mb-8">
+                Record and replay browser tests
+              </p>
 
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-          <div className="max-w-7xl mx-auto">
-            <h1 className="text-4xl font-bold text-slate-900 mb-2">Test Recorder</h1>
-            <p className="text-slate-600 mb-8">Record and replay browser tests</p>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h2 className="text-xl font-semibold mb-4">
+                    {isRecording ? "🔴 Recording..." : "Create Test"}
+                  </h2>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h2 className="text-xl font-semibold mb-4">
-                  {isRecording ? '🔴 Recording...' : 'Create Test'}
-                </h2>
-                
-                <div className="space-y-4">
-                  <input
-                    type="text"
-                    value={newTest.name}
-                    onChange={(e) => setNewTest({...newTest, name: e.target.value})}
-                    placeholder="Test Name"
-                    disabled={isRecording}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  />
-                  
-                  <input
-                    type="text"
-                    value={newTest.url}
-                    onChange={(e) => setNewTest({...newTest, url: e.target.value})}
-                    placeholder="https://example.com"
-                    disabled={isRecording}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  />
+                  <div className="space-y-4">
+                    <input
+                      type="text"
+                      value={newTest.name}
+                      onChange={(e) =>
+                        setNewTest({ ...newTest, name: e.target.value })
+                      }
+                      placeholder="Test Name"
+                      disabled={isRecording}
+                      className="w-full px-4 py-2 border rounded-lg"
+                    />
 
-                  {!isRecording ? (
-                    <button
-                      onClick={startRecording}
-                      className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg font-medium"
-                    >
-                      ▶ Start Recording
-                    </button>
+                    <input
+                      type="text"
+                      value={newTest.url}
+                      onChange={(e) =>
+                        setNewTest({ ...newTest, url: e.target.value })
+                      }
+                      placeholder="https://example.com"
+                      disabled={isRecording}
+                      className="w-full px-4 py-2 border rounded-lg"
+                    />
+
+                    {!isRecording ? (
+                      <button
+                        onClick={startRecording}
+                        className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg font-medium"
+                      >
+                        🎬 Start Codegen Recording
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <button
+                          onClick={saveCodegenTest}
+                          className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg font-medium"
+                        >
+                          ✅ Save Test
+                        </button>
+                        <button
+                          onClick={cancelCodegen}
+                          className="w-full bg-slate-500 hover:bg-slate-600 text-white px-4 py-3 rounded-lg font-medium"
+                        >
+                          ✕ Cancel
+                        </button>
+                      </div>
+                    )}
+
+                    {isRecording && (
+                      <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                        <p className="text-sm text-red-700">
+                          🎬 Playwright codegen is recording! See the browser
+                          window and the modal with generated code.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-6">
+                  <h2 className="text-xl font-semibold mb-4">
+                    Saved Tests ({tests.length})
+                  </h2>
+
+                  {tests.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400">
+                      <p>No tests yet. Create your first test!</p>
+                    </div>
                   ) : (
-                    <button
-                      onClick={stopRecording}
-                      className="w-full bg-slate-700 hover:bg-slate-800 text-white px-4 py-3 rounded-lg font-medium"
-                    >
-                      ■ Stop & Save
-                    </button>
-                  )}
+                    <div className="space-y-3">
+                      {tests.map((test) => (
+                        <div key={test.id} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h3 className="font-semibold">{test.name}</h3>
+                              <p className="text-xs text-slate-500">
+                                {test.url}
+                              </p>
+                              <p className="text-xs text-slate-600">
+                                {test.steps
+                                  ? `${test.steps.length} steps`
+                                  : test.type === "codegen"
+                                  ? "codegen"
+                                  : "0 steps"}
+                              </p>
+                            </div>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs ${
+                                test.status === "passed"
+                                  ? "bg-green-100 text-green-700"
+                                  : test.status === "failed"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-slate-100 text-slate-700"
+                              }`}
+                            >
+                              {test.status}
+                            </span>
+                          </div>
 
-                  {isRecording && (
-                    <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                      <p className="text-sm text-red-700">Browser opened! Interact with the page.</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => runTest(test)}
+                              className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm"
+                            >
+                              ▶ Run Test
+                            </button>
+                            <button
+                              onClick={() => deleteTest(test.id)}
+                              className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded text-sm"
+                            >
+                              🗑
+                            </button>
+                          </div>
+
+                          {selectedTest?.id === test.id && executionResults && (
+                            <div className="mt-4 border-t pt-4">
+                              <div
+                                className={`p-3 rounded ${
+                                  executionResults.status === "passed"
+                                    ? "bg-green-50"
+                                    : executionResults.status === "running"
+                                    ? "bg-blue-50"
+                                    : executionResults.status === "created"
+                                    ? "bg-purple-50"
+                                    : "bg-red-50"
+                                }`}
+                              >
+                                <p className="font-medium">
+                                  {executionResults.status === "passed"
+                                    ? "✅ Passed"
+                                    : executionResults.status === "running"
+                                    ? "⏳ Running..."
+                                    : executionResults.status === "created"
+                                    ? "📝 Codegen Test Generated"
+                                    : "❌ Failed"}
+                                </p>
+                                {executionResults.message && (
+                                  <p className="text-sm text-slate-700 mt-1">
+                                    {executionResults.message}
+                                  </p>
+                                )}
+                                {executionResults.error && (
+                                  <p className="text-sm text-red-700 mt-1">
+                                    {executionResults.error}
+                                  </p>
+                                )}
+                                {executionResults.code && (
+                                  <div className="mt-3 bg-slate-900 text-slate-100 p-3 rounded font-mono text-xs overflow-auto max-h-64">
+                                    <pre>{executionResults.code}</pre>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-6">
-                <h2 className="text-xl font-semibold mb-4">Saved Tests ({tests.length})</h2>
+              {/* Codegen Modal */}
+              {codegenModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full mx-4 max-h-[90vh] flex flex-col">
+                    <div className="flex justify-between items-center p-6 border-b">
+                      <h2 className="text-2xl font-bold">
+                        🎬 Playwright Codegen Recording
+                      </h2>
+                      <button
+                        onClick={cancelCodegen}
+                        className="text-gray-500 hover:text-gray-700 text-2xl"
+                      >
+                        ✕
+                      </button>
+                    </div>
 
-                {tests.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400">
-                    <p>No tests yet. Create your first test!</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {tests.map((test) => (
-                      <div key={test.id} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h3 className="font-semibold">{test.name}</h3>
-                            <p className="text-xs text-slate-500">{test.url}</p>
-                            <p className="text-xs text-slate-600">{test.steps.length} steps</p>
-                          </div>
-                          <span className={`px-3 py-1 rounded-full text-xs ${
-                            test.status === 'passed' ? 'bg-green-100 text-green-700' :
-                            test.status === 'failed' ? 'bg-red-100 text-red-700' :
-                            'bg-slate-100 text-slate-700'
-                          }`}>
-                            {test.status}
-                          </span>
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => runTest(test)}
-                            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm"
-                          >
-                            ▶ Run Test
-                          </button>
-                          <button
-                            onClick={() => deleteTest(test.id)}
-                            className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded text-sm"
-                          >
-                            🗑
-                          </button>
-                        </div>
-
-                        {selectedTest?.id === test.id && executionResults && (
-                          <div className="mt-4 border-t pt-4">
-                            <div className={`p-3 rounded ${
-                              executionResults.status === 'passed' ? 'bg-green-50' :
-                              executionResults.status === 'running' ? 'bg-blue-50' :
-                              'bg-red-50'
-                            }`}>
-                              <p className="font-medium">
-                                {executionResults.status === 'passed' ? '✅ Passed' :
-                                 executionResults.status === 'running' ? '⏳ Running...' :
-                                 '❌ Failed'}
-                              </p>
-                              {executionResults.error && (
-                                <p className="text-sm text-red-700 mt-1">{executionResults.error}</p>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                    <div className="flex-1 overflow-auto p-6 space-y-4">
+                      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                        <p className="font-semibold text-blue-900 mb-2">
+                          🚀 Codegen is running!
+                        </p>
+                        <p className="text-blue-800 text-sm mb-2">
+                          Interact with the browser window to record your test.
+                        </p>
+                        <ul className="text-blue-800 text-sm space-y-1 ml-4 list-disc">
+                          <li>Click buttons and links</li>
+                          <li>Fill in forms</li>
+                          <li>Navigate between pages</li>
+                          <li>Playwright will generate the test code</li>
+                        </ul>
                       </div>
-                    ))}
+
+                      {generatedCode && (
+                        <div>
+                          <h3 className="font-semibold mb-2">
+                            Generated Code:
+                          </h3>
+                          <div className="bg-slate-900 text-slate-100 p-4 rounded font-mono text-xs overflow-auto max-h-80">
+                            <pre>{generatedCode}</pre>
+                          </div>
+                        </div>
+                      )}
+
+                      {!generatedCode && (
+                        <div className="bg-slate-100 p-8 rounded text-center">
+                          <p className="text-slate-600">
+                            Waiting for interactions...
+                          </p>
+                          <div className="mt-4">
+                            <div className="inline-block animate-spin">⏳</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="border-t p-6 flex gap-3">
+                      <button
+                        onClick={saveCodegenTest}
+                        disabled={!generatedCode}
+                        className={`flex-1 px-4 py-2 rounded font-medium text-white ${
+                          generatedCode
+                            ? "bg-green-600 hover:bg-green-700"
+                            : "bg-gray-400 cursor-not-allowed"
+                        }`}
+                      >
+                        ✅ Save Test
+                      </button>
+                      <button
+                        onClick={cancelCodegen}
+                        className="flex-1 px-4 py-2 rounded font-medium text-white bg-gray-500 hover:bg-gray-600"
+                      >
+                        ✕ Cancel
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      );
-    }
+        );
+      }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
-</body>
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
 </html>

@@ -1,8 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 const { chromium } = require("playwright");
+const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const app = express();
 app.use(cors());
@@ -10,6 +12,7 @@ app.use(express.json());
 app.use(express.static("public"));
 
 const activeSessions = new Map();
+const activeCodegenSessions = new Map();
 
 function loadAuthCookies() {
   try {
@@ -24,6 +27,7 @@ function loadAuthCookies() {
   return [];
 }
 
+// Legacy recording endpoint - kept for backward compatibility
 app.post("/api/record/start", async (req, res) => {
   const { url } = req.body;
   const sessionId = Date.now().toString();
@@ -69,6 +73,188 @@ app.post("/api/record/start", async (req, res) => {
   }
 });
 
+// Hybrid mode: Use Playwright codegen for test recording
+app.post("/api/codegen/start", async (req, res) => {
+  const { url, testName } = req.body;
+  const sessionId = Date.now().toString();
+  const outputFile = path.join(__dirname, `.codegen-${sessionId}.ts`);
+
+  try {
+    console.log(`Starting Playwright codegen session ${sessionId} for ${url}`);
+
+    // Launch Playwright codegen
+    // On Windows, we may need shell: true for npx to work properly
+    const codegenProcess = spawn(
+      "npx",
+      [
+        "playwright",
+        "codegen",
+        url,
+        "--output",
+        outputFile,
+        "--target",
+        "playwright-test",
+      ],
+      {
+        shell: process.platform === "win32",
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    // Handle spawn errors (e.g., npx not found)
+    if (!codegenProcess || !codegenProcess.pid) {
+      return res.status(500).json({
+        error:
+          "Failed to spawn codegen process. Ensure Playwright is installed: npm install playwright",
+      });
+    }
+
+    const sessionData = {
+      sessionId,
+      testName,
+      url,
+      outputFile,
+      process: codegenProcess,
+      startTime: Date.now(),
+      generatedCode: "",
+    };
+
+    activeCodegenSessions.set(sessionId, sessionData);
+
+    codegenProcess.stdout.on("data", (data) => {
+      console.log(`[codegen-${sessionId}] stdout: ${data}`);
+    });
+
+    codegenProcess.stderr.on("data", (data) => {
+      console.log(`[codegen-${sessionId}] stderr: ${data}`);
+    });
+
+    codegenProcess.on("error", (error) => {
+      console.error(`Codegen process ${sessionId} error:`, error);
+      activeCodegenSessions.delete(sessionId);
+    });
+
+    codegenProcess.on("close", (code) => {
+      console.log(`Codegen process ${sessionId} closed with code ${code}`);
+      if (fs.existsSync(outputFile)) {
+        sessionData.generatedCode = fs.readFileSync(outputFile, "utf8");
+        console.log(`Codegen output saved for session ${sessionId}`);
+      }
+    });
+
+    res.json({
+      success: true,
+      sessionId,
+      message: "Playwright codegen started - browser window opened",
+    });
+  } catch (error) {
+    console.error("Error starting codegen:", error);
+    activeCodegenSessions.delete(sessionId);
+    res.status(500).json({
+      error:
+        error.message ||
+        "Failed to start codegen. Ensure Playwright is installed: npm install playwright",
+    });
+  }
+});
+
+// Get codegen status and generated code
+app.get("/api/codegen/status/:sessionId", (req, res) => {
+  const { sessionId } = req.params;
+  const session = activeCodegenSessions.get(sessionId);
+
+  if (!session) {
+    return res.status(404).json({ error: "Session not found" });
+  }
+
+  const isRunning = session.process && !session.process.killed;
+  let generatedCode = "";
+
+  if (fs.existsSync(session.outputFile)) {
+    generatedCode = fs.readFileSync(session.outputFile, "utf8");
+  }
+
+  res.json({
+    sessionId,
+    isRunning,
+    generatedCode,
+    testName: session.testName,
+    url: session.url,
+  });
+});
+
+// Save codegen result as test
+app.post("/api/codegen/save", (req, res) => {
+  const { sessionId, testName } = req.body;
+  const session = activeCodegenSessions.get(sessionId);
+
+  if (!session) {
+    return res.status(404).json({ error: "Session not found" });
+  }
+
+  try {
+    let generatedCode = "";
+    if (fs.existsSync(session.outputFile)) {
+      generatedCode = fs.readFileSync(session.outputFile, "utf8");
+    }
+
+    const test = {
+      id: `test:${Date.now()}`,
+      name: testName || session.testName,
+      url: session.url,
+      type: "codegen",
+      code: generatedCode,
+      createdAt: new Date().toISOString(),
+      status: "Not Run",
+    };
+
+    // Clean up
+    if (fs.existsSync(session.outputFile)) {
+      fs.unlinkSync(session.outputFile);
+    }
+    activeCodegenSessions.delete(sessionId);
+
+    res.json({
+      success: true,
+      test,
+      message: "Test saved from codegen",
+    });
+  } catch (error) {
+    console.error("Error saving codegen:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Stop/cancel codegen session
+app.post("/api/codegen/stop", (req, res) => {
+  const { sessionId } = req.body;
+  const session = activeCodegenSessions.get(sessionId);
+
+  if (!session) {
+    return res.status(404).json({ error: "Session not found" });
+  }
+
+  try {
+    if (session.process && !session.process.killed) {
+      session.process.kill();
+    }
+
+    if (fs.existsSync(session.outputFile)) {
+      fs.unlinkSync(session.outputFile);
+    }
+
+    activeCodegenSessions.delete(sessionId);
+
+    res.json({
+      success: true,
+      message: "Codegen session stopped",
+    });
+  } catch (error) {
+    console.error("Error stopping codegen:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/record/stop", async (req, res) => {
   const { sessionId } = req.body;
 
@@ -92,6 +278,104 @@ app.post("/api/record/stop", async (req, res) => {
   } catch (error) {
     console.error("Error stopping recording:", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Run test from codegen code - executes via Playwright CLI
+app.post("/api/test/run-codegen", async (req, res) => {
+  const { code, url } = req.body;
+  const startTime = Date.now();
+
+  try {
+    // Create generated-tests directory in project root
+    const testsDir = path.join(__dirname, "generated-tests");
+    if (!fs.existsSync(testsDir)) {
+      fs.mkdirSync(testsDir, { recursive: true });
+    }
+    const specFile = path.join(testsDir, `test-${Date.now()}.spec.ts`);
+
+    // Write the generated code directly to the spec file
+    fs.writeFileSync(specFile, code, "utf8");
+
+    // Create a minimal Playwright config for this run
+    const configFile = path.join(__dirname, "playwright.config.js");
+    const configContent = `module.exports = {
+  timeout: 120000,
+  testDir: ${JSON.stringify(testsDir)},
+  use: {
+    headless: false
+  },
+  projects: [
+    { 
+      name: 'chromium', 
+      use: { 
+        browserName: 'chromium',
+        launchOptions: { slowMo: 3000 }
+      } 
+    }
+  ]
+};`;
+    fs.writeFileSync(configFile, configContent, "utf8");
+
+    console.log(`[run-codegen] Spec file: ${specFile}`);
+    console.log(`[run-codegen] Config file: ${configFile}`);
+    console.log(`[run-codegen] Tests dir: ${testsDir}`);
+    console.log(`[run-codegen] Generated code:\n${code}`);
+
+    // Run Playwright test - let it discover from testDir
+    const args = [
+      "playwright",
+      "test",
+      "--config",
+      configFile,
+      "--project",
+      "chromium",
+    ];
+
+    const proc = spawn("npx", args, {
+      shell: process.platform === "win32",
+      cwd: __dirname,
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (d) => {
+      stdout += d.toString();
+      console.log(`[run-codegen] ${d.toString()}`);
+    });
+
+    proc.stderr.on("data", (d) => {
+      stderr += d.toString();
+      console.error(`[run-codegen] ERR ${d.toString()}`);
+    });
+
+    proc.on("error", (err) => {
+      console.error("[run-codegen] Process error:", err);
+    });
+
+    proc.on("close", (code) => {
+      const duration = Date.now() - startTime;
+
+      console.log(`[run-codegen] Test saved at: ${specFile}`);
+
+      const success = code === 0;
+      res.json({
+        success,
+        status: success ? "passed" : "failed",
+        duration,
+        stdout,
+        stderr,
+      });
+    });
+  } catch (error) {
+    console.error("[run-codegen] Error running codegen test:", error);
+    const duration = Date.now() - startTime;
+    res.status(500).json({
+      status: "failed",
+      error: error.message,
+      duration,
+    });
   }
 });
 
