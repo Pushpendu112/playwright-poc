@@ -1,0 +1,2071 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enterprise Test Recorder</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+    />
+    <script src="https://unpkg.com/@mui/material@5.14.0/umd/material-ui.production.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Roboto", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+      }
+      #root {
+        min-height: 100vh;
+      }
+      .page-transition {
+        animation: fadeIn 0.3s ease-in;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      .loader-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+      const {
+        Button,
+        TextField,
+        Card,
+        CardContent,
+        Box,
+        Container,
+        AppBar,
+        Toolbar,
+        Typography,
+        Dialog,
+        DialogTitle,
+        DialogContent,
+        DialogActions,
+        Checkbox,
+        FormControlLabel,
+        CircularProgress,
+        Alert,
+        Snackbar,
+        Grid,
+        Paper,
+        Chip,
+        Table,
+        TableBody,
+        TableCell,
+        TableContainer,
+        TableHead,
+        TableRow,
+        Drawer,
+        List,
+        ListItem,
+        ListItemIcon,
+        ListItemText,
+        Divider,
+      } = window.MaterialUI;
+
+      const API_BASE = window.location.origin;
+
+      // Pages
+      const PAGES = {
+        LANDING: "landing",
+        GENERATE_TEST: "generate_test",
+        SEARCH_AND_ATTACH: "search_and_attach",
+        VIEW_TEST: "view_test",
+        ALL_TEST_CASES: "all_test_cases",
+      };
+
+      // Loader Component
+      function Loader({ open, message = "Loading..." }) {
+        if (!open) return null;
+        return (
+          <div className="loader-overlay">
+            <div
+              style={{
+                textAlign: "center",
+                background: "white",
+                padding: "30px",
+                borderRadius: "8px",
+              }}
+            >
+              <CircularProgress style={{ marginBottom: "15px" }} />
+              <Typography variant="h6">{message}</Typography>
+            </div>
+          </div>
+        );
+      }
+
+      // Landing Page
+      function LandingPage({ onNavigate }) {
+        return (
+          <div className="page-transition">
+            <AppBar
+              position="static"
+              style={{
+                background: "linear-gradient(45deg, #667eea 30%, #764ba2 90%)",
+              }}
+            >
+              <Toolbar>
+                <Typography variant="h6" style={{ flexGrow: 1 }}>
+                  Enterprise Test Recorder
+                </Typography>
+              </Toolbar>
+            </AppBar>
+
+            <Container maxWidth="md" style={{ paddingTop: "60px" }}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6}>
+                  <Card
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <CardContent style={{ flexGrow: 1 }}>
+                      <Typography gutterBottom variant="h5">
+                        📝 Generate Test Case
+                      </Typography>
+                      <Typography color="textSecondary" paragraph>
+                        Create a new Playwright test case with AI assistance.
+                        Record user interactions and generate executable test
+                        code.
+                      </Typography>
+                    </CardContent>
+                    <Box p={2}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="primary"
+                        onClick={() => onNavigate(PAGES.GENERATE_TEST)}
+                      >
+                        Start Recording
+                      </Button>
+                    </Box>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <Card
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <CardContent style={{ flexGrow: 1 }}>
+                      <Typography gutterBottom variant="h5">
+                        🔗 Attach to ADO Story
+                      </Typography>
+                      <Typography color="textSecondary" paragraph>
+                        Search for an Azure DevOps story and attach existing
+                        test cases. Update ADO custom fields with test case
+                        links.
+                      </Typography>
+                    </CardContent>
+                    <Box p={2}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="secondary"
+                        onClick={() => onNavigate(PAGES.SEARCH_AND_ATTACH)}
+                      >
+                        Search Story
+                      </Button>
+                    </Box>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              <Box mt={4}>
+                <Card style={{ marginBottom: "20px" }}>
+                  <CardContent>
+                    <TextField
+                      fullWidth
+                      placeholder="Search test cases by name, URL, story title or story number..."
+                      variant="outlined"
+                      size="small"
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter" && e.target.value.trim()) {
+                          window.location.hash = `#search=${encodeURIComponent(
+                            e.target.value
+                          )}`;
+                          onNavigate(PAGES.ALL_TEST_CASES);
+                        }
+                      }}
+                      InputProps={{
+                        style: { fontSize: "14px" },
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              </Box>
+
+              <Box>
+                <Card>
+                  <CardContent>
+                    <Typography gutterBottom variant="h6">
+                      📚 Recent Test Cases
+                    </Typography>
+                    <RecentTestCasesList onNavigate={onNavigate} />
+                  </CardContent>
+                </Card>
+              </Box>
+            </Container>
+          </div>
+        );
+      }
+
+      // Recent Test Cases List
+      function RecentTestCasesList({ onNavigate }) {
+        const [testCases, setTestCases] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [runStates, setRunStates] = useState({});
+        const [expandedErrors, setExpandedErrors] = useState({});
+
+        useEffect(() => {
+          fetchTestCases();
+        }, []);
+
+        const fetchTestCases = async () => {
+          try {
+            const resp = await fetch(`${API_BASE}/api/test-cases`);
+            const data = await resp.json();
+            if (data.success) {
+              setTestCases(data.data.slice(0, 5)); // Show last 5
+            }
+          } catch (err) {
+            console.error("Error fetching test cases:", err);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const runTest = async (e, testId) => {
+          e.stopPropagation();
+          setRunStates((prev) => ({
+            ...prev,
+            [testId]: { status: "running" },
+          }));
+
+          try {
+            const testCase = testCases.find((tc) => tc.id === testId);
+            const resp = await fetch(`${API_BASE}/api/test/run-codegen`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                code: testCase.code,
+                url: testCase.url,
+              }),
+            });
+            const data = await resp.json();
+
+            if (data.status === "passed") {
+              setRunStates((prev) => ({
+                ...prev,
+                [testId]: { status: "passed", results: data },
+              }));
+            } else {
+              setRunStates((prev) => ({
+                ...prev,
+                [testId]: {
+                  status: "failed",
+                  error: data.output || data.error || "Test failed",
+                  results: data,
+                },
+              }));
+            }
+          } catch (err) {
+            setRunStates((prev) => ({
+              ...prev,
+              [testId]: { status: "failed", error: err.message },
+            }));
+          }
+        };
+
+        const toggleError = (e, testId) => {
+          e.stopPropagation();
+          setExpandedErrors((prev) => ({
+            ...prev,
+            [testId]: !prev[testId],
+          }));
+        };
+
+        if (loading) return <Typography>Loading...</Typography>;
+        if (testCases.length === 0)
+          return (
+            <Typography color="textSecondary">
+              No test cases yet. Create one to get started!
+            </Typography>
+          );
+
+        return (
+          <Box>
+            {testCases.map((tc) => {
+              const state = runStates[tc.id];
+              const isExpanded = expandedErrors[tc.id];
+
+              return (
+                <Box key={tc.id} mb={2}>
+                  <Card
+                    style={{
+                      cursor: "pointer",
+                      borderLeft:
+                        state?.status === "passed"
+                          ? "4px solid #4caf50"
+                          : state?.status === "failed"
+                          ? "4px solid #f44336"
+                          : "none",
+                    }}
+                  >
+                    <CardContent
+                      onClick={() => onNavigate(PAGES.VIEW_TEST, tc.id)}
+                      style={{
+                        paddingBottom: "8px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Box style={{ flex: 1 }}>
+                        <Typography
+                          variant="subtitle1"
+                          style={{ fontWeight: 500 }}
+                        >
+                          {tc.name}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Created:{" "}
+                          {new Date(tc.created_at).toLocaleDateString()}
+                        </Typography>
+                      </Box>
+
+                      <Box
+                        display="flex"
+                        alignItems="center"
+                        gap={1}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {state?.status === "running" && (
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <CircularProgress size={20} />
+                            <Typography variant="caption">
+                              Running...
+                            </Typography>
+                          </Box>
+                        )}
+                        {state?.status === "passed" && (
+                          <Chip
+                            label="✓ Passed"
+                            color="primary"
+                            size="small"
+                            style={{ background: "#4caf50", color: "white" }}
+                          />
+                        )}
+                        {state?.status === "failed" && (
+                          <Chip
+                            label="✗ Failed"
+                            color="error"
+                            size="small"
+                            style={{ background: "#f44336", color: "white" }}
+                          />
+                        )}
+
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={(e) => runTest(e, tc.id)}
+                          disabled={state?.status === "running"}
+                        >
+                          {state?.status === "running" ? "Running..." : "▶ Run"}
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+
+                  {state?.status === "failed" && state?.error && (
+                    <Card style={{ marginTop: "8px", background: "#fff3cd" }}>
+                      <CardContent style={{ paddingBottom: "8px" }}>
+                        <Box
+                          display="flex"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          onClick={(e) => toggleError(e, tc.id)}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <Typography
+                            variant="caption"
+                            style={{ fontWeight: 500 }}
+                          >
+                            Error Details {isExpanded ? "▼" : "▶"}
+                          </Typography>
+                        </Box>
+                        {isExpanded && (
+                          <Box
+                            mt={1}
+                            component="pre"
+                            style={{
+                              background: "#f5f5f5",
+                              padding: "10px",
+                              borderRadius: "4px",
+                              overflow: "auto",
+                              maxHeight: "200px",
+                              fontSize: "11px",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {state.error}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+        );
+      }
+
+      // Generate Test Page
+      function GenerateTestPage({ onNavigate, onBack }) {
+        const [isRecording, setIsRecording] = useState(false);
+        const [recordingState, setRecordingState] = useState(null);
+        const [testName, setTestName] = useState("");
+        const [testUrl, setTestUrl] = useState("https://github.com");
+        const [codegenSessionId, setCodegenSessionId] = useState(null);
+        const [generatedCode, setGeneratedCode] = useState("");
+        const [aiEditable, setAiEditable] = useState("");
+        const [generatedFromAI, setGeneratedFromAI] = useState("");
+        const [aiModalOpen, setAiModalOpen] = useState(false);
+        const [aiLoading, setAiLoading] = useState(false);
+        const [saveLoading, setSaveLoading] = useState(false);
+
+        const startCodegen = async () => {
+          if (!testName || !testUrl) {
+            alert("Please enter test name and URL");
+            return;
+          }
+          setIsRecording(true);
+          setRecordingState("starting");
+          try {
+            const resp = await fetch(`${API_BASE}/api/codegen/start`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: testUrl, testName }),
+            });
+            if (!resp.ok) {
+              throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+            }
+            const text = await resp.text();
+            const data = text ? JSON.parse(text) : {};
+            setCodegenSessionId(data.sessionId);
+            setRecordingState("recording");
+          } catch (err) {
+            alert("Failed to start recording: " + err.message);
+            setIsRecording(false);
+          }
+        };
+
+        const stopCodegen = async () => {
+          try {
+            const resp = await fetch(`${API_BASE}/api/codegen/stop`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: codegenSessionId }),
+            });
+            if (!resp.ok) {
+              throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+            }
+            const text = await resp.text();
+            const data = text ? JSON.parse(text) : {};
+            setGeneratedCode(data.generatedCode || "");
+            setRecordingState("stopped");
+            setIsRecording(false);
+          } catch (err) {
+            alert("Failed to stop recording: " + err.message);
+          }
+        };
+
+        const saveTestCase = async () => {
+          setSaveLoading(true);
+          try {
+            const resp = await fetch(`${API_BASE}/api/test-cases`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: testName,
+                code: generatedFromAI || generatedCode,
+                url: testUrl,
+              }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+              alert("Test case saved successfully!");
+              onBack();
+            }
+          } catch (err) {
+            alert("Failed to save: " + err.message);
+          } finally {
+            setSaveLoading(false);
+          }
+        };
+
+        const analyzeWithAI = async () => {
+          setAiLoading(true);
+          try {
+            const resp = await fetch(`${API_BASE}/api/ai/analyze`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: generatedCode }),
+            });
+            const data = await resp.json();
+            if (data.success && data.ai) {
+              setAiEditable(JSON.stringify(data.ai, null, 2));
+              setAiModalOpen(true);
+            }
+          } catch (err) {
+            alert("AI analysis failed: " + err.message);
+          } finally {
+            setAiLoading(false);
+          }
+        };
+
+        const approveAndGenerate = async () => {
+          let approved;
+          try {
+            approved = JSON.parse(aiEditable);
+          } catch (e) {
+            alert("Invalid JSON");
+            return;
+          }
+
+          setAiLoading(true);
+          try {
+            const resp = await fetch(`${API_BASE}/api/ai/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ approved }),
+            });
+            const data = await resp.json();
+            if (data.success && data.code) {
+              setGeneratedFromAI(data.code);
+              setAiModalOpen(false);
+            }
+          } catch (err) {
+            alert("AI generation failed: " + err.message);
+          } finally {
+            setAiLoading(false);
+          }
+        };
+
+        return (
+          <div className="page-transition">
+            <AppBar
+              position="static"
+              style={{
+                background: "linear-gradient(45deg, #667eea 30%, #764ba2 90%)",
+              }}
+            >
+              <Toolbar>
+                <Button color="inherit" onClick={onBack}>
+                  ← Back
+                </Button>
+                <Typography variant="h6" style={{ flexGrow: 1 }}>
+                  Generate Test Case
+                </Typography>
+              </Toolbar>
+            </AppBar>
+
+            <Container maxWidth="lg" style={{ paddingTop: "20px" }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Card style={{ marginBottom: "20px" }}>
+                    <CardContent>
+                      <Typography gutterBottom variant="h6">
+                        Test Details
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        label="Test Name"
+                        value={testName}
+                        onChange={(e) => setTestName(e.target.value)}
+                        margin="normal"
+                        size="small"
+                        disabled={isRecording}
+                      />
+                      <TextField
+                        fullWidth
+                        label="URL to Test"
+                        value={testUrl}
+                        onChange={(e) => setTestUrl(e.target.value)}
+                        margin="normal"
+                        size="small"
+                        disabled={isRecording}
+                      />
+                      <Box mt={2}>
+                        {!isRecording ? (
+                          <Button
+                            fullWidth
+                            variant="contained"
+                            color="primary"
+                            onClick={startCodegen}
+                            disabled={!testName || !testUrl}
+                          >
+                            Start Recording
+                          </Button>
+                        ) : (
+                          <Button
+                            fullWidth
+                            variant="contained"
+                            color="error"
+                            onClick={stopCodegen}
+                          >
+                            Stop Recording
+                          </Button>
+                        )}
+                      </Box>
+                      {recordingState && (
+                        <Alert style={{ marginTop: "10px" }} severity="info">
+                          Status:{" "}
+                          {recordingState === "recording"
+                            ? "🔴 Recording"
+                            : "⏹️ Stopped"}
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={8}>
+                  <Card>
+                    <CardContent>
+                      <Typography gutterBottom variant="h6">
+                        Generated Test Code{" "}
+                        {generatedFromAI ? "(AI Enhanced)" : ""}
+                      </Typography>
+                      <Box
+                        component="pre"
+                        style={{
+                          background: "#f5f5f5",
+                          padding: "10px",
+                          borderRadius: "4px",
+                          overflow: "auto",
+                          maxHeight: "400px",
+                          fontSize: "12px",
+                        }}
+                      >
+                        {generatedFromAI ||
+                          generatedCode ||
+                          "No code generated yet..."}
+                      </Box>
+                      <Box mt={2} display="flex" gap={1}>
+                        <Button
+                          variant="outlined"
+                          onClick={analyzeWithAI}
+                          disabled={!generatedCode || aiLoading}
+                        >
+                          {aiLoading ? "Analyzing..." : "🤖 AI Analyze"}
+                        </Button>
+                        <Button
+                          variant="contained"
+                          color="success"
+                          onClick={saveTestCase}
+                          disabled={
+                            (!generatedCode && !generatedFromAI) || saveLoading
+                          }
+                        >
+                          {saveLoading ? "Saving..." : "Save Test Case"}
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* AI Modal */}
+              <Dialog open={aiModalOpen} maxWidth="sm" fullWidth>
+                <DialogTitle>AI Analysis & Generation</DialogTitle>
+                <DialogContent>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={10}
+                    value={aiEditable}
+                    onChange={(e) => setAiEditable(e.target.value)}
+                    style={{
+                      marginTop: "10px",
+                      fontFamily: "monospace",
+                      fontSize: "12px",
+                    }}
+                  />
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={() => setAiModalOpen(false)}>Cancel</Button>
+                  <Button
+                    onClick={approveAndGenerate}
+                    variant="contained"
+                    color="primary"
+                    disabled={aiLoading}
+                  >
+                    {aiLoading ? "Generating..." : "Generate Test Code"}
+                  </Button>
+                </DialogActions>
+              </Dialog>
+
+              <Loader open={aiLoading} message="AI is processing..." />
+            </Container>
+          </div>
+        );
+      }
+
+      // Search and Attach Page
+      function SearchAndAttachPage({ onNavigate, onBack }) {
+        const [storyNumber, setStoryNumber] = useState("");
+        const [searchLoading, setSearchLoading] = useState(false);
+        const [foundStory, setFoundStory] = useState(null);
+        const [workItem, setWorkItem] = useState(null);
+        const [attachedTestCases, setAttachedTestCases] = useState([]);
+        const [attachLoading, setAttachLoading] = useState(false);
+
+        // Modal state for adding test cases
+        const [addModalOpen, setAddModalOpen] = useState(false);
+        const [modalSearchText, setModalSearchText] = useState("");
+        const [modalTestCases, setModalTestCases] = useState([]);
+        const [modalSelectedTests, setModalSelectedTests] = useState(new Set());
+        const [modalPage, setModalPage] = useState(0);
+        const [modalTotalPages, setModalTotalPages] = useState(0);
+        const [modalLoading, setModalLoading] = useState(false);
+        const modalPageLimit = 10;
+
+        const searchStory = async () => {
+          if (!storyNumber) {
+            alert("Please enter story number");
+            return;
+          }
+          setSearchLoading(true);
+          setWorkItem(null);
+          setAttachedTestCases([]);
+          try {
+            const resp = await fetch(`${API_BASE}/api/ado/search-story`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ storyNumber: parseInt(storyNumber) }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+              setFoundStory(data.data);
+
+              // Fetch TFS work item details
+              try {
+                const wiResp = await fetch(
+                  `${API_BASE}/api/tfs/workitem/${storyNumber}`
+                );
+                const wiData = await wiResp.json();
+                if (wiData.success) {
+                  setWorkItem(wiData.data);
+                }
+              } catch (err) {
+                console.warn("Could not fetch TFS work item details:", err);
+              }
+
+              // Fetch test cases attached to this story
+              try {
+                const attachedResp = await fetch(
+                  `${API_BASE}/api/ado/story/${data.data.id}/test-cases`
+                );
+                const attachedData = await attachedResp.json();
+                if (attachedData.success) {
+                  setAttachedTestCases(attachedData.data);
+                }
+              } catch (err) {
+                console.warn("Could not fetch attached test cases:", err);
+              }
+            } else {
+              alert("Story not found");
+            }
+          } catch (err) {
+            alert("Search failed: " + err.message);
+          } finally {
+            setSearchLoading(false);
+          }
+        };
+
+        const openAddModal = async () => {
+          setAddModalOpen(true);
+          setModalPage(0);
+          setModalSelectedTests(new Set());
+          setModalSearchText("");
+          await loadModalTestCases("", 0);
+        };
+
+        const loadModalTestCases = async (search, page) => {
+          setModalLoading(true);
+          try {
+            // Get ALL available test cases
+            const resp = await fetch(`${API_BASE}/api/test-cases`);
+            const data = await resp.json();
+            if (data.success) {
+              // Filter out test cases already attached to this story
+              const attachedIds = new Set(attachedTestCases.map((tc) => tc.id));
+              let availableTestCases = data.data.filter(
+                (tc) => !attachedIds.has(tc.id)
+              );
+
+              // Apply search filter if provided
+              if (search.trim()) {
+                const searchLower = search.toLowerCase();
+                availableTestCases = availableTestCases.filter(
+                  (tc) =>
+                    (tc.name && tc.name.toLowerCase().includes(searchLower)) ||
+                    (tc.url && tc.url.toLowerCase().includes(searchLower))
+                );
+              }
+
+              // Apply pagination
+              const total = availableTestCases.length;
+              const totalPages = Math.ceil(total / modalPageLimit);
+              const offset = page * modalPageLimit;
+              const paginatedCases = availableTestCases.slice(
+                offset,
+                offset + modalPageLimit
+              );
+
+              setModalTestCases(paginatedCases);
+              setModalTotalPages(totalPages);
+              setModalPage(page);
+            }
+          } catch (err) {
+            console.error("Failed to load test cases:", err);
+          } finally {
+            setModalLoading(false);
+          }
+        };
+
+        const handleModalSearch = (text) => {
+          setModalSearchText(text);
+          loadModalTestCases(text, 0);
+        };
+
+        const toggleModalTest = (testId) => {
+          const newSelected = new Set(modalSelectedTests);
+          if (newSelected.has(testId)) {
+            newSelected.delete(testId);
+          } else {
+            newSelected.add(testId);
+          }
+          setModalSelectedTests(newSelected);
+        };
+
+        const addTestsToStory = async () => {
+          if (modalSelectedTests.size === 0) {
+            alert("Please select at least one test case");
+            return;
+          }
+          setAttachLoading(true);
+          try {
+            const resp = await fetch(
+              `${API_BASE}/api/ado/story/${foundStory.id}/link-tests`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  testCaseIds: Array.from(modalSelectedTests),
+                  storyTitle: foundStory.title || "",
+                  storyNumber: foundStory.number || storyNumber,
+                }),
+              }
+            );
+            const data = await resp.json();
+            if (data.success) {
+              alert("Test cases attached successfully!");
+              setAddModalOpen(false);
+
+              // Refresh attached test cases
+              try {
+                const attachedResp = await fetch(
+                  `${API_BASE}/api/ado/story/${foundStory.id}/test-cases`
+                );
+                const attachedData = await attachedResp.json();
+                if (attachedData.success) {
+                  setAttachedTestCases(attachedData.data);
+                }
+              } catch (err) {
+                console.warn("Could not refresh attached test cases:", err);
+              }
+            }
+          } catch (err) {
+            alert("Attach failed: " + err.message);
+          } finally {
+            setAttachLoading(false);
+          }
+        };
+
+        return (
+          <div className="page-transition">
+            <AppBar
+              position="static"
+              style={{
+                background: "linear-gradient(45deg, #667eea 30%, #764ba2 90%)",
+              }}
+            >
+              <Toolbar>
+                <Button color="inherit" onClick={onBack}>
+                  ← Back
+                </Button>
+                <Typography variant="h6" style={{ flexGrow: 1 }}>
+                  Search & Attach Tests to ADO Story
+                </Typography>
+              </Toolbar>
+            </AppBar>
+
+            <Container maxWidth="md" style={{ paddingTop: "20px" }}>
+              <Card style={{ marginBottom: "20px" }}>
+                <CardContent>
+                  <Typography gutterBottom variant="h6">
+                    Search ADO Story
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Story Number (e.g., 12345)"
+                    value={storyNumber}
+                    onChange={(e) => setStoryNumber(e.target.value)}
+                    disabled={searchLoading}
+                    size="small"
+                  />
+                  <Box mt={2}>
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      color="primary"
+                      onClick={searchStory}
+                      disabled={!storyNumber || searchLoading}
+                    >
+                      {searchLoading ? "Searching..." : "Search Story"}
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+
+              {foundStory && (
+                <Card>
+                  <CardContent>
+                    <Typography gutterBottom variant="h6">
+                      Select Test Cases to Attach
+                    </Typography>
+                    <Alert style={{ marginBottom: "15px" }} severity="success">
+                      Story found! Select test cases to attach.
+                    </Alert>
+
+                    {workItem && (
+                      <Paper
+                        style={{
+                          padding: "15px",
+                          marginBottom: "20px",
+                          background: "#f9f9f9",
+                          border: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <Typography variant="h6" gutterBottom>
+                          Work Item Details
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="textSecondary">
+                              ID
+                            </Typography>
+                            <Typography variant="body2">
+                              {workItem.id}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="textSecondary">
+                              Type
+                            </Typography>
+                            <Typography variant="body2">
+                              {workItem.workItemType}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12}>
+                            <Typography variant="caption" color="textSecondary">
+                              Title
+                            </Typography>
+                            <Typography variant="body2">
+                              {workItem.title}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="textSecondary">
+                              State
+                            </Typography>
+                            <Chip
+                              label={workItem.state}
+                              size="small"
+                              color={
+                                workItem.state === "Active"
+                                  ? "primary"
+                                  : workItem.state === "Closed"
+                                  ? "default"
+                                  : "primary"
+                              }
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="textSecondary">
+                              Assigned To
+                            </Typography>
+                            <Typography variant="body2">
+                              {workItem.assignedTo}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="textSecondary">
+                              Created By
+                            </Typography>
+                            <Typography variant="body2">
+                              {workItem.createdBy}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="textSecondary">
+                              Created Date
+                            </Typography>
+                            <Typography variant="body2">
+                              {workItem.createdDate}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="textSecondary">
+                              Area Path
+                            </Typography>
+                            <Typography variant="body2">
+                              {workItem.areaPath || "N/A"}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="caption" color="textSecondary">
+                              Iteration Path
+                            </Typography>
+                            <Typography variant="body2">
+                              {workItem.iterationPath || "N/A"}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    )}
+
+                    <Typography
+                      variant="h6"
+                      gutterBottom
+                      style={{ marginTop: "20px" }}
+                    >
+                      Attached Test Cases ({attachedTestCases.length})
+                    </Typography>
+
+                    {attachedTestCases.length === 0 ? (
+                      <Alert severity="info" style={{ marginBottom: "15px" }}>
+                        No test cases attached to this story yet.
+                      </Alert>
+                    ) : (
+                      <TableContainer
+                        component={Paper}
+                        style={{ marginBottom: "15px" }}
+                      >
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow style={{ background: "#f5f5f5" }}>
+                              <TableCell>Test Case Name</TableCell>
+                              <TableCell>URL</TableCell>
+                              <TableCell>Created</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {attachedTestCases.map((tc) => (
+                              <TableRow key={tc.id}>
+                                <TableCell>{tc.name}</TableCell>
+                                <TableCell style={{ fontSize: "0.85rem" }}>
+                                  {tc.url || "N/A"}
+                                </TableCell>
+                                <TableCell>
+                                  {new Date(tc.created_at).toLocaleDateString()}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+
+                    <Box mt={2}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="primary"
+                        onClick={openAddModal}
+                        disabled={attachLoading}
+                      >
+                        + Add Test Case
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Loader
+                open={searchLoading || attachLoading}
+                message="Processing..."
+              />
+            </Container>
+
+            {/* Modal for Adding Test Cases */}
+            <Dialog
+              open={addModalOpen}
+              onClose={() => setAddModalOpen(false)}
+              maxWidth="md"
+              fullWidth
+            >
+              <DialogTitle>Add Test Cases to Story</DialogTitle>
+              <DialogContent>
+                <Box style={{ marginTop: "15px" }}>
+                  <TextField
+                    fullWidth
+                    label="Search by Test Name or URL"
+                    placeholder="Type to search..."
+                    value={modalSearchText}
+                    onChange={(e) => handleModalSearch(e.target.value)}
+                    size="small"
+                    disabled={modalLoading}
+                  />
+                </Box>
+
+                {modalLoading ? (
+                  <Box
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      padding: "30px",
+                    }}
+                  >
+                    <CircularProgress />
+                  </Box>
+                ) : (
+                  <>
+                    <TableContainer
+                      component={Paper}
+                      style={{ marginTop: "15px", marginBottom: "15px" }}
+                    >
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow style={{ background: "#f5f5f5" }}>
+                            <TableCell
+                              padding="checkbox"
+                              width={50}
+                            ></TableCell>
+                            <TableCell>Test Name</TableCell>
+                            <TableCell>URL</TableCell>
+                            <TableCell>Created</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {modalTestCases.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={4} align="center">
+                                No test cases found
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            modalTestCases.map((tc) => (
+                              <TableRow key={tc.id}>
+                                <TableCell padding="checkbox">
+                                  <Checkbox
+                                    checked={modalSelectedTests.has(tc.id)}
+                                    onChange={() => toggleModalTest(tc.id)}
+                                  />
+                                </TableCell>
+                                <TableCell>{tc.name}</TableCell>
+                                <TableCell style={{ fontSize: "0.85rem" }}>
+                                  {tc.url || "N/A"}
+                                </TableCell>
+                                <TableCell>
+                                  {new Date(tc.created_at).toLocaleDateString()}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+
+                    {/* Pagination Controls */}
+                    <Box
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "15px",
+                      }}
+                    >
+                      <Typography variant="caption" color="textSecondary">
+                        Page {modalPage + 1} of {modalTotalPages || 1}
+                      </Typography>
+                      <Box>
+                        <Button
+                          size="small"
+                          onClick={() => setModalPage(modalPage - 1)}
+                          disabled={modalPage === 0 || modalLoading}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          size="small"
+                          onClick={() => setModalPage(modalPage + 1)}
+                          disabled={
+                            modalPage >= modalTotalPages - 1 || modalLoading
+                          }
+                        >
+                          Next
+                        </Button>
+                      </Box>
+                    </Box>
+                  </>
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button
+                  onClick={() => setAddModalOpen(false)}
+                  disabled={attachLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={addTestsToStory}
+                  variant="contained"
+                  color="primary"
+                  disabled={
+                    modalSelectedTests.size === 0 ||
+                    modalLoading ||
+                    attachLoading
+                  }
+                >
+                  Add {modalSelectedTests.size} Test(s)
+                </Button>
+              </DialogActions>
+            </Dialog>
+          </div>
+        );
+      }
+
+      // All Test Cases Page
+      function AllTestCasesPage({ onNavigate, onBack }) {
+        const [testCases, setTestCases] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [searchText, setSearchText] = useState("");
+        const [page, setPage] = useState(0);
+        const [totalCases, setTotalCases] = useState(0);
+        const pageSize = 10;
+
+        useEffect(() => {
+          fetchTestCases();
+        }, [searchText, page]);
+
+        const fetchTestCases = async () => {
+          setLoading(true);
+          try {
+            const query = new URLSearchParams({
+              search: searchText,
+              page: page,
+              limit: pageSize,
+            });
+            const resp = await fetch(
+              `${API_BASE}/api/test-cases/search?${query.toString()}`
+            );
+            const data = await resp.json();
+            if (data.success) {
+              setTestCases(data.data || []);
+              setTotalCases(data.total || 0);
+            }
+          } catch (err) {
+            console.error("Failed to fetch test cases:", err);
+            alert("Failed to fetch test cases: " + err.message);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const handleChangePage = (event, newPage) => {
+          setPage(newPage);
+        };
+
+        return (
+          <div className="page-transition">
+            <AppBar
+              position="static"
+              style={{
+                background: "linear-gradient(45deg, #667eea 30%, #764ba2 90%)",
+              }}
+            >
+              <Toolbar>
+                <Typography
+                  variant="h6"
+                  style={{ flexGrow: 1, cursor: "pointer" }}
+                  onClick={onBack}
+                >
+                  ← Search Test Cases
+                </Typography>
+              </Toolbar>
+            </AppBar>
+
+            <Container maxWidth="lg" style={{ paddingTop: "20px" }}>
+              <Paper style={{ padding: "20px", marginBottom: "20px" }}>
+                <TextField
+                  fullWidth
+                  label="Search by test name, URL, story title or story number"
+                  placeholder="Type to search..."
+                  value={searchText}
+                  onChange={(e) => {
+                    setSearchText(e.target.value);
+                    setPage(0);
+                  }}
+                  variant="outlined"
+                  size="small"
+                />
+              </Paper>
+
+              <Typography variant="body2" color="textSecondary" paragraph>
+                Found {totalCases} test cases
+              </Typography>
+
+              {loading ? (
+                <Loader open={true} message="Loading test cases..." />
+              ) : testCases.length === 0 ? (
+                <Paper
+                  style={{
+                    padding: "40px",
+                    textAlign: "center",
+                    background: "#f5f5f5",
+                  }}
+                >
+                  <Typography color="textSecondary">
+                    No test cases found
+                  </Typography>
+                </Paper>
+              ) : (
+                <>
+                  <Grid container spacing={2}>
+                    {testCases.map((tc) => (
+                      <Grid item xs={12} key={tc.id}>
+                        <Card
+                          style={{ cursor: "pointer" }}
+                          onClick={() => onNavigate(PAGES.VIEW_TEST, tc.id)}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.boxShadow =
+                              "0 8px 16px rgba(0,0,0,0.1)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.boxShadow = "";
+                          }}
+                        >
+                          <CardContent>
+                            <Grid container spacing={2}>
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="h6" gutterBottom>
+                                  {tc.name}
+                                </Typography>
+                                {tc.url && (
+                                  <Typography
+                                    color="textSecondary"
+                                    variant="body2"
+                                  >
+                                    {tc.url}
+                                  </Typography>
+                                )}
+                              </Grid>
+                              <Grid
+                                item
+                                xs={12}
+                                sm={3}
+                                style={{ textAlign: "right" }}
+                              >
+                                <Typography
+                                  variant="caption"
+                                  color="textSecondary"
+                                >
+                                  Updated:{" "}
+                                  {new Date(tc.updated_at).toLocaleDateString()}
+                                </Typography>
+                              </Grid>
+                            </Grid>
+                            {tc.ado_story_title && (
+                              <Paper
+                                style={{
+                                  padding: "8px 12px",
+                                  marginTop: "12px",
+                                  background: "#e3f2fd",
+                                }}
+                              >
+                                <Typography variant="caption">
+                                  <strong>
+                                    Story{" "}
+                                    {tc.ado_story_number || tc.ado_story_id}:
+                                  </strong>{" "}
+                                  {tc.ado_story_title}
+                                </Typography>
+                              </Paper>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                  <Paper
+                    style={{
+                      marginTop: "20px",
+                      display: "flex",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <TablePagination
+                      rowsPerPageOptions={[]}
+                      component="div"
+                      count={totalCases}
+                      rowsPerPage={pageSize}
+                      page={page}
+                      onPageChange={handleChangePage}
+                      showFirstButton
+                      showLastButton
+                    />
+                  </Paper>
+                </>
+              )}
+            </Container>
+          </div>
+        );
+      }
+
+      // View Test Case Page
+      function ViewTestPage({ testId, onBack }) {
+        const [testCase, setTestCase] = useState(null);
+        const [loading, setLoading] = useState(true);
+        const [copySuccess, setCopySuccess] = useState(false);
+        const [editMode, setEditMode] = useState(false);
+        const [editedCode, setEditedCode] = useState("");
+        const [saveLoading, setSaveLoading] = useState(false);
+        const [aiAnalyzing, setAiAnalyzing] = useState(false);
+        const [aiEditable, setAiEditable] = useState("");
+        const [aiModalOpen, setAiModalOpen] = useState(false);
+        const [runResults, setRunResults] = useState(null);
+        const [aiStep, setAiStep] = useState("analyze"); // "analyze" or "generate"
+        const [aiGeneratedCode, setAiGeneratedCode] = useState("");
+        const [generatedRunResults, setGeneratedRunResults] = useState(null);
+
+        useEffect(() => {
+          fetchTestCase();
+        }, [testId]);
+
+        const fetchTestCase = async () => {
+          try {
+            const resp = await fetch(`${API_BASE}/api/test-cases/${testId}`);
+            const data = await resp.json();
+            if (data.success) {
+              setTestCase(data.data);
+              setEditedCode(data.data.code);
+            }
+          } catch (err) {
+            console.error("Error fetching test case:", err);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const copyToClipboard = () => {
+          navigator.clipboard.writeText(testCase.code);
+          setCopySuccess(true);
+          setTimeout(() => setCopySuccess(false), 2000);
+        };
+
+        const saveEdit = async () => {
+          setSaveLoading(true);
+          try {
+            const resp = await fetch(`${API_BASE}/api/test-cases/${testId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: editedCode }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+              setTestCase((prev) => ({ ...prev, code: editedCode }));
+              setEditMode(false);
+              alert("Test case updated successfully!");
+            }
+          } catch (err) {
+            alert("Failed to save: " + err.message);
+          } finally {
+            setSaveLoading(false);
+          }
+        };
+
+        const analyzeWithAI = async () => {
+          setAiAnalyzing(true);
+          try {
+            const resp = await fetch(`${API_BASE}/api/ai/analyze`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: editedCode || testCase.code }),
+            });
+            const data = await resp.json();
+            if (data.success && data.ai) {
+              setAiEditable(JSON.stringify(data.ai, null, 2));
+              setAiModalOpen(true);
+            }
+          } catch (err) {
+            alert("AI analysis failed: " + err.message);
+          } finally {
+            setAiAnalyzing(false);
+          }
+        };
+
+        const generatePlaywrightCode = async () => {
+          let approved;
+          try {
+            approved = JSON.parse(aiEditable);
+          } catch (e) {
+            alert("Invalid JSON");
+            return;
+          }
+
+          setAiAnalyzing(true);
+          try {
+            const resp = await fetch(`${API_BASE}/api/ai/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ approved }),
+            });
+            const data = await resp.json();
+            if (data.success && data.code) {
+              setAiGeneratedCode(data.code);
+              setAiStep("generate");
+              setGeneratedRunResults(null);
+            }
+          } catch (err) {
+            alert("AI generation failed: " + err.message);
+          } finally {
+            setAiAnalyzing(false);
+          }
+        };
+
+        const runGeneratedCode = async () => {
+          setGeneratedRunResults({ status: "running" });
+          try {
+            const resp = await fetch(`${API_BASE}/api/test/run-codegen`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                code: aiGeneratedCode,
+                url: testCase.url,
+              }),
+            });
+            const data = await resp.json();
+            setGeneratedRunResults(data);
+          } catch (err) {
+            setGeneratedRunResults({ status: "failed", error: err.message });
+          }
+        };
+
+        const updateTestWithGenerated = async () => {
+          setSaveLoading(true);
+          try {
+            const resp = await fetch(`${API_BASE}/api/test-cases/${testId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: aiGeneratedCode }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+              setTestCase((prev) => ({ ...prev, code: aiGeneratedCode }));
+              setEditedCode(aiGeneratedCode);
+              setAiModalOpen(false);
+              setAiStep("analyze");
+              alert("Test case updated from AI-generated code!");
+            }
+          } catch (err) {
+            alert("Failed to update: " + err.message);
+          } finally {
+            setSaveLoading(false);
+          }
+        };
+
+        const runTest = async () => {
+          setRunResults({ status: "running" });
+          try {
+            const resp = await fetch(`${API_BASE}/api/test/run-codegen`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                code: editedCode || testCase.code,
+                url: testCase.url,
+              }),
+            });
+            const data = await resp.json();
+            setRunResults(data);
+          } catch (err) {
+            setRunResults({ status: "failed", error: err.message });
+          }
+        };
+
+        if (loading)
+          return <Loader open={true} message="Loading test case..." />;
+        if (!testCase) return <Typography>Test case not found</Typography>;
+
+        return (
+          <div className="page-transition">
+            <AppBar
+              position="static"
+              style={{
+                background: "linear-gradient(45deg, #667eea 30%, #764ba2 90%)",
+              }}
+            >
+              <Toolbar>
+                <Button color="inherit" onClick={onBack}>
+                  ← Back
+                </Button>
+                <Typography variant="h6" style={{ flexGrow: 1 }}>
+                  Test Case: {testCase.name}
+                </Typography>
+              </Toolbar>
+            </AppBar>
+
+            <Container maxWidth="lg" style={{ paddingTop: "20px" }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={3}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6">{testCase.name}</Typography>
+                      <Box mt={2}>
+                        <Chip
+                          label={`Status: ${testCase.status}`}
+                          color="primary"
+                          style={{ marginBottom: "8px" }}
+                        />
+                        <Typography variant="caption" display="block">
+                          Created:{" "}
+                          {new Date(testCase.created_at).toLocaleString()}
+                        </Typography>
+                        <Typography variant="caption" display="block">
+                          Updated:{" "}
+                          {new Date(testCase.updated_at).toLocaleString()}
+                        </Typography>
+                      </Box>
+                      <Box mt={2} display="flex" flexDirection="column" gap={1}>
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          color="primary"
+                          onClick={runTest}
+                          disabled={runResults?.status === "running"}
+                        >
+                          {runResults?.status === "running"
+                            ? "Running..."
+                            : "▶ Run Test"}
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          onClick={() => setEditMode(!editMode)}
+                        >
+                          {editMode ? "Cancel Edit" : "✎ Edit"}
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+
+                  {runResults && (
+                    <Card style={{ marginTop: "16px" }}>
+                      <CardContent>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Test Result
+                        </Typography>
+                        {runResults.status === "running" && (
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <CircularProgress size={20} />
+                            <Typography variant="caption">
+                              Running...
+                            </Typography>
+                          </Box>
+                        )}
+                        {runResults.status === "passed" && (
+                          <Chip
+                            label="✓ Passed"
+                            color="primary"
+                            style={{ background: "#4caf50", color: "white" }}
+                          />
+                        )}
+                        {runResults.status === "failed" && (
+                          <Box>
+                            <Chip
+                              label="✗ Failed"
+                              color="error"
+                              style={{ background: "#f44336", color: "white" }}
+                            />
+                            {runResults.error && (
+                              <Box
+                                mt={1}
+                                component="pre"
+                                style={{
+                                  background: "#fff3cd",
+                                  padding: "10px",
+                                  borderRadius: "4px",
+                                  fontSize: "11px",
+                                  maxHeight: "150px",
+                                  overflow: "auto",
+                                }}
+                              >
+                                {runResults.error}
+                              </Box>
+                            )}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+                </Grid>
+
+                <Grid item xs={12} md={9}>
+                  <Card>
+                    <CardContent>
+                      <Box
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        mb={2}
+                      >
+                        <Typography variant="h6">
+                          {editMode ? "Edit Test Code" : "Test Code"}
+                        </Typography>
+                        <Box display="flex" gap={1}>
+                          {editMode && (
+                            <Button
+                              variant="contained"
+                              color="success"
+                              size="small"
+                              onClick={saveEdit}
+                              disabled={saveLoading}
+                            >
+                              {saveLoading ? "Saving..." : "💾 Save"}
+                            </Button>
+                          )}
+                          {!editMode && (
+                            <>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={copyToClipboard}
+                              >
+                                {copySuccess ? "✓ Copied!" : "Copy"}
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={analyzeWithAI}
+                                disabled={aiAnalyzing}
+                              >
+                                {aiAnalyzing ? "Analyzing..." : "🤖 AI Analyze"}
+                              </Button>
+                            </>
+                          )}
+                        </Box>
+                      </Box>
+                      {editMode ? (
+                        <TextField
+                          fullWidth
+                          multiline
+                          rows={20}
+                          value={editedCode}
+                          onChange={(e) => setEditedCode(e.target.value)}
+                          style={{ fontFamily: "monospace", fontSize: "12px" }}
+                        />
+                      ) : (
+                        <Box
+                          component="pre"
+                          style={{
+                            background: "#f5f5f5",
+                            padding: "15px",
+                            borderRadius: "4px",
+                            overflow: "auto",
+                            maxHeight: "500px",
+                            fontSize: "13px",
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          {testCase.code}
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* AI Modal - Two Step Process */}
+              <Dialog open={aiModalOpen} maxWidth="md" fullWidth>
+                <DialogTitle>
+                  AI Analysis & Code Generation
+                  <Typography
+                    variant="caption"
+                    display="block"
+                    color="textSecondary"
+                  >
+                    Step{" "}
+                    {aiStep === "analyze" ? "1: Analysis" : "2: Generated Code"}
+                  </Typography>
+                </DialogTitle>
+                <DialogContent>
+                  {aiStep === "analyze" ? (
+                    <Box>
+                      <Typography
+                        variant="subtitle2"
+                        gutterBottom
+                        style={{ marginTop: "10px" }}
+                      >
+                        Edit Analysis (Step 1)
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={10}
+                        value={aiEditable}
+                        onChange={(e) => setAiEditable(e.target.value)}
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: "12px",
+                        }}
+                      />
+                    </Box>
+                  ) : (
+                    <Box>
+                      <Typography
+                        variant="subtitle2"
+                        gutterBottom
+                        style={{ marginTop: "10px" }}
+                      >
+                        AI-Generated Playwright Code (Step 2)
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={15}
+                        value={aiGeneratedCode}
+                        onChange={(e) => setAiGeneratedCode(e.target.value)}
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: "12px",
+                        }}
+                      />
+
+                      {generatedRunResults && (
+                        <Box mt={2}>
+                          <Typography variant="subtitle2">
+                            Test Execution Result:
+                          </Typography>
+                          {generatedRunResults.status === "running" && (
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <CircularProgress size={20} />
+                              <Typography variant="caption">
+                                Running...
+                              </Typography>
+                            </Box>
+                          )}
+                          {generatedRunResults.status === "passed" && (
+                            <Chip
+                              label="✓ Passed"
+                              color="primary"
+                              style={{ background: "#4caf50", color: "white" }}
+                            />
+                          )}
+                          {generatedRunResults.status === "failed" && (
+                            <Box>
+                              <Chip
+                                label="✗ Failed"
+                                color="error"
+                                style={{
+                                  background: "#f44336",
+                                  color: "white",
+                                }}
+                              />
+                              {generatedRunResults.error && (
+                                <Box
+                                  mt={1}
+                                  component="pre"
+                                  style={{
+                                    background: "#fff3cd",
+                                    padding: "8px",
+                                    borderRadius: "4px",
+                                    fontSize: "10px",
+                                    maxHeight: "120px",
+                                    overflow: "auto",
+                                  }}
+                                >
+                                  {generatedRunResults.error}
+                                </Box>
+                              )}
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </DialogContent>
+                <DialogActions>
+                  <Button
+                    onClick={() => {
+                      setAiModalOpen(false);
+                      setAiStep("analyze");
+                      setAiGeneratedCode("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+
+                  {aiStep === "analyze" && (
+                    <Button
+                      onClick={generatePlaywrightCode}
+                      variant="contained"
+                      color="primary"
+                      disabled={aiAnalyzing}
+                    >
+                      {aiAnalyzing ? "Generating Code..." : "→ Generate Code"}
+                    </Button>
+                  )}
+
+                  {aiStep === "generate" && (
+                    <Box display="flex" gap={1}>
+                      <Button
+                        onClick={() => setAiStep("analyze")}
+                        variant="outlined"
+                      >
+                        ← Back to Analysis
+                      </Button>
+                      <Button
+                        onClick={runGeneratedCode}
+                        variant="outlined"
+                        color="primary"
+                        disabled={generatedRunResults?.status === "running"}
+                      >
+                        {generatedRunResults?.status === "running"
+                          ? "Running..."
+                          : "▶ Run Code"}
+                      </Button>
+                      <Button
+                        onClick={updateTestWithGenerated}
+                        variant="contained"
+                        color="success"
+                        disabled={saveLoading}
+                      >
+                        {saveLoading ? "Updating..." : "💾 Update Test Case"}
+                      </Button>
+                    </Box>
+                  )}
+                </DialogActions>
+              </Dialog>
+
+              <Loader open={aiAnalyzing} message="AI is processing..." />
+            </Container>
+          </div>
+        );
+      }
+
+      // Handler to reset AI state when modal closes
+      const handleAIModalClose = () => {
+        setAiModalOpen(false);
+        setAiStep("analyze");
+        setAiGeneratedCode("");
+        setGeneratedRunResults(null);
+      };
+
+      // Main App
+      function App() {
+        const [currentPage, setCurrentPage] = useState(PAGES.LANDING);
+        const [viewTestId, setViewTestId] = useState(null);
+
+        // Handle URL parameters on mount
+        useEffect(() => {
+          const params = new URLSearchParams(window.location.search);
+          const testId = params.get("testId");
+
+          if (testId) {
+            setViewTestId(testId);
+            setCurrentPage(PAGES.VIEW_TEST);
+          }
+        }, []);
+
+        const navigate = (page, testId = null) => {
+          if (testId) {
+            setViewTestId(testId);
+            window.history.pushState({}, "", `?testId=${testId}`);
+          } else {
+            window.history.pushState({}, "", "/");
+          }
+          setCurrentPage(page);
+        };
+
+        const goBack = () => {
+          setCurrentPage(PAGES.LANDING);
+          setViewTestId(null);
+          window.history.pushState({}, "", "/");
+        };
+
+        return (
+          <>
+            {currentPage === PAGES.LANDING && (
+              <LandingPage onNavigate={navigate} />
+            )}
+            {currentPage === PAGES.GENERATE_TEST && (
+              <GenerateTestPage onNavigate={navigate} onBack={goBack} />
+            )}
+            {currentPage === PAGES.SEARCH_AND_ATTACH && (
+              <SearchAndAttachPage onNavigate={navigate} onBack={goBack} />
+            )}
+            {currentPage === PAGES.ALL_TEST_CASES && (
+              <AllTestCasesPage onNavigate={navigate} onBack={goBack} />
+            )}
+            {currentPage === PAGES.VIEW_TEST && (
+              <ViewTestPage testId={viewTestId} onBack={goBack} />
+            )}
+          </>
+        );
+      }
+
+      ReactDOM.render(<App />, document.getElementById("root"));
+    </script>
+  </body>
+</html>
